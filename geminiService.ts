@@ -1,6 +1,6 @@
 
 // Use correct imports as per @google/genai guidelines
-import { GoogleGenAI, Type, GenerateContentResponse, Blob } from "@google/genai";
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { ChatMessage, ChatPart } from "./types";
 
 export class GeminiService {
@@ -27,7 +27,7 @@ export class GeminiService {
 
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [imagePart, textPart] }],
+      contents: { parts: [imagePart, textPart] },
     });
 
     return response.text?.trim() || "";
@@ -57,7 +57,7 @@ export class GeminiService {
 
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts }],
+      contents: { parts },
     });
 
     return response.text?.trim() || currentPrompt;
@@ -72,7 +72,7 @@ export class GeminiService {
     // Ensure the aspect ratio string matches the SDK requirements exactly
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: prompt,
       config: {
         imageConfig: {
           aspectRatio: aspectRatio as any
@@ -105,7 +105,7 @@ export class GeminiService {
 
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: [{ role: 'user', parts }],
+      contents: { parts },
       config: {
         imageConfig: {
           aspectRatio: aspectRatio as any
@@ -139,7 +139,6 @@ export class GeminiService {
           const mimeTypeMatch = url.match(/^data:(.*);base64,/);
           const dataStr = url.split(',')[1] || "";
           const mType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/png';
-          // Using SDK's Blob structure specifically
           return {
             inlineData: {
               data: dataStr,
@@ -178,7 +177,7 @@ export class GeminiService {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [{ text: `Extract recipe details from this text: ${text}` }] }],
+      contents: `Extract recipe details from this text: ${text}`,
       config: {
         responseMimeType: 'application/json',
         responseSchema: {
@@ -212,7 +211,7 @@ export class GeminiService {
     
     const searchRes: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [{ text: `Search Google for current info about: "${prompt}". Summarize and then write an image prompt starting with 'IMAGE_PROMPT: '.` }] }],
+      contents: `Search Google for current info about: "${prompt}". Summarize and then write an image prompt starting with 'IMAGE_PROMPT: '.`,
       config: { tools: [{ googleSearch: {} }] }
     });
 

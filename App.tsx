@@ -6,7 +6,7 @@ import {
   Upload, Send, Paperclip, User, Bot, Brain, Globe, FileJson, 
   ChefHat, Zap, Scissors, Camera as CameraIcon, Star, Flame, UserCircle,
   ShieldCheck, Cpu, Briefcase, Heart, PenTool, Layers, Plus, Maximize, Smartphone, Monitor, Square, ExternalLink, ChevronRight, Video,
-  Target, Info, Users
+  Target, Info, Users, Key
 } from 'lucide-react';
 import { TRANSLATIONS, MENU_ICONS } from './constants';
 import { MenuId, AppLanguage, ChatMessage, RecipeResult } from './types';
@@ -52,6 +52,7 @@ const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [lang, setLang] = useState<AppLanguage>('id');
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
 
   const [sourceTab, setSourceTab] = useState<'single' | 'multi'>('single');
   const [sourceImage1, setSourceImage1] = useState<string | null>(null);
@@ -80,6 +81,57 @@ const App: React.FC = () => {
   const [liveResult, setLiveResult] = useState<{ summary: string, imageUrl: string, groundingMetadata?: any } | null>(null);
 
   const txt = TRANSLATIONS[lang];
+
+  useEffect(() => {
+    checkApiKey();
+  }, []);
+
+  const checkApiKey = async () => {
+    // Cek apakah process.env.API_KEY sudah tersedia
+    if (process.env.API_KEY) {
+      setHasKey(true);
+      return;
+    }
+
+    // Jika tidak, cek integrasi AI Studio
+    if (typeof window !== 'undefined' && (window as any).aistudio) {
+      try {
+        const selected = await (window as any).aistudio.hasSelectedApiKey();
+        // Fix for unknown type issue: cast to boolean
+        setHasKey(!!selected);
+      } catch (e) {
+        setHasKey(false);
+      }
+    } else {
+      // Default ke true dan biarkan handleApiError menangkap jika gagal saat runtime
+      setHasKey(true);
+    }
+  };
+
+  const handleOpenKeySelection = async () => {
+    if ((window as any).aistudio) {
+      await (window as any).aistudio.openSelectKey();
+      // Asumsikan sukses setelah memicu dialog
+      setHasKey(true);
+      setError(null);
+    }
+  };
+
+  const handleApiError = (err: any) => {
+    console.error("API Error:", err);
+    const msg = err.message || "";
+    if (msg.includes('Requested entity was not found')) {
+      setHasKey(false);
+      setError(lang === 'id' ? 'Entitas tidak ditemukan. Mohon pilih kunci API yang valid dari proyek berbayar.' : 'Requested entity was not found. Please select a valid API key from a paid project.');
+    } else if (msg.includes('429')) {
+      setError(lang === 'id' ? 'Kuota API Terlampaui. Mohon tunggu beberapa menit.' : 'API Quota Exceeded. Please wait a few minutes.');
+    } else if (msg.includes('API Key must be set')) {
+      setHasKey(false);
+      setError(lang === 'id' ? 'Kunci API belum dikonfigurasi. Mohon hubungkan Kunci API Studio Anda.' : 'API Key not configured. Please connect your AI Studio Key.');
+    } else {
+      setError(msg || "Operation failed");
+    }
+  };
 
   const CAMERA_ANGLES = [
     { 
@@ -212,7 +264,7 @@ const App: React.FC = () => {
       const initialPrompt = await gemini.generatePromptFromImage(img, menuTitle, lang);
       setPrompt(initialPrompt);
     } catch (err: any) {
-      console.error("Auto analysis failed", err);
+      handleApiError(err);
     } finally {
       setIsAnalyzing(false);
     }
@@ -226,7 +278,7 @@ const App: React.FC = () => {
       const refined = await gemini.refinePrompt(prompt, (refImg || sourceImage2 || null), menuTitle, lang);
       setPrompt(refined);
     } catch (err: any) {
-      setError(lang === 'en' ? "Refinement failed" : "Penyempurnaan gagal");
+      handleApiError(err);
     } finally {
       setIsAnalyzing(false);
     }
@@ -320,17 +372,12 @@ const App: React.FC = () => {
       }
       setGeneratedImage(res);
     } catch (err: any) {
-      if (err.message?.includes('429')) {
-        setError(lang === 'id' ? 'Kuota API Terlampaui. Mohon tunggu beberapa menit atau hubungi Admin.' : 'API Quota Exceeded. Please wait a few minutes before trying again.');
-      } else {
-        setError(err.message || "Operation failed");
-      }
+      handleApiError(err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fixed the unknown type error by delegating mapping to the gemini service.
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() && !chatAttachment) return;
@@ -344,15 +391,10 @@ const App: React.FC = () => {
     setChatAttachment(null);
     setChatLoading(true);
     try {
-      // Logic for converting ChatMessage to Gemini SDK format moved to geminiService.ts to avoid type conflicts
       const res = await gemini.chat(newHistory);
       setChatHistory(prev => [...prev, { role: 'model', parts: res }]);
     } catch (err: any) {
-      if (err.message?.includes('429')) {
-        setError(lang === 'id' ? 'Kuota Obrolan Terlampaui.' : 'Chat Quota Exceeded.');
-      } else {
-        setError("Chat failed");
-      }
+      handleApiError(err);
     } finally {
       setChatLoading(false);
     }
@@ -366,6 +408,42 @@ const App: React.FC = () => {
     textPrimary: isDarkMode ? "text-slate-100" : "text-slate-900",
     textSecondary: isDarkMode ? "text-slate-400" : "text-slate-500",
   };
+
+  // Setup / Key Guard View
+  if (hasKey === false) {
+    return (
+      <div className={`flex flex-col items-center justify-center min-h-screen ${themeClasses.bg} text-white p-8`}>
+        <div className="max-w-md w-full text-center space-y-8 animate-in fade-in zoom-in duration-500">
+          <ApertureLogo size={120} className="mx-auto" />
+          <div className="space-y-4">
+            <h1 className="text-4xl font-black">Magic Photo Studio</h1>
+            <p className="text-slate-400 text-lg">Untuk menyediakan pemrosesan gambar berkualitas tinggi, studio ini memerlukan Kunci API Google AI Studio dari proyek berbayar.</p>
+            {error && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm font-medium">{error}</div>}
+          </div>
+          <div className="space-y-4">
+            <button 
+              onClick={handleOpenKeySelection}
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl font-black text-xl flex items-center justify-center gap-3 hover:scale-105 active:scale-95 transition-all shadow-xl shadow-blue-500/20"
+            >
+              <Key className="w-6 h-6"/> Hubungkan Kunci AI Studio
+            </button>
+            <p className="text-xs text-slate-500">
+              Harus menggunakan kunci proyek berbayar. Lihat <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-blue-500 underline">Dokumentasi Billing</a> untuk informasi lebih lanjut.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state saat pengecekan kunci pertama kali
+  if (hasKey === null) {
+    return (
+      <div className={`flex items-center justify-center min-h-screen ${themeClasses.bg}`}>
+        <ApertureLogo size={80} className="animate-spin-slow" />
+      </div>
+    );
+  }
 
   return (
     <div className={`flex h-screen overflow-hidden ${themeClasses.bg} ${themeClasses.textPrimary} transition-colors duration-500`}>
@@ -421,8 +499,8 @@ const App: React.FC = () => {
           ) : ['chat', 'recipe-extractor', 'live-visuals'].includes(activeMenu) ? (
             <div className="max-w-4xl mx-auto h-full">
               {activeMenu === 'chat' && <ChatView history={chatHistory} loading={chatLoading} input={chatInput} onInputChange={setChatInput} onSubmit={handleChatSubmit} theme={themeClasses} chatEndRef={chatEndRef} onFileSelect={setChatAttachment} attachment={chatAttachment} onRemoveAttachment={() => setChatAttachment(null)}/>}
-              {activeMenu === 'recipe-extractor' && <RecipeView input={recipeInput} onInputChange={setRecipeInput} loading={loading} result={recipeResult} onExtract={async () => { setLoading(true); try { setRecipeResult(await gemini.extractRecipe(recipeInput)); } catch(e: any){ setError("Failed"); } finally { setLoading(false); }}} theme={themeClasses} txt={txt}/>}
-              {activeMenu === 'live-visuals' && <LiveView input={livePrompt} onInputChange={setLivePrompt} loading={loading} result={liveResult} onGenerate={async () => { setLoading(true); try { setLiveResult(await gemini.getLiveVisuals(livePrompt)); } catch(e: any){ setError("Search failed"); } finally { setLoading(false); }}} theme={themeClasses} txt={txt}/>}
+              {activeMenu === 'recipe-extractor' && <RecipeView input={recipeInput} onInputChange={setRecipeInput} loading={loading} result={recipeResult} onExtract={async () => { setLoading(true); try { setRecipeResult(await gemini.extractRecipe(recipeInput)); } catch(e: any){ handleApiError(e); } finally { setLoading(false); }}} theme={themeClasses} txt={txt}/>}
+              {activeMenu === 'live-visuals' && <LiveView input={livePrompt} onInputChange={setLivePrompt} loading={loading} result={liveResult} onGenerate={async () => { setLoading(true); try { setLiveResult(await gemini.getLiveVisuals(livePrompt)); } catch(e: any){ handleApiError(e); } finally { setLoading(false); }}} theme={themeClasses} txt={txt}/>}
             </div>
           ) : (
             <StudioView 
@@ -701,6 +779,7 @@ const StudioView = ({ prompt, onPromptChange, loading, isAnalyzing, generatedIma
             {loading ? <Loader2 className="w-5 h-5 animate-spin"/> : <Flame className="w-5 h-5 group-hover:rotate-12 transition-transform"/>}
             {(source1 || multiImages.length > 0) ? "TRANSFORM VISUAL" : "RECAPTURE IMAGE"}
           </button>
+          {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] font-medium animate-in fade-in slide-in-from-top-2">{error}</div>}
         </div>
       </div>
       
